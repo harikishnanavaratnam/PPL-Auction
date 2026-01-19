@@ -162,12 +162,6 @@ export default function LandingPage() {
             >
               Enter Live Auction
             </Link>
-            <Link 
-              href="/admin"
-              className="px-8 py-3 border-2 border-primary text-primary font-medium rounded-lg hover:bg-secondary transition-all duration-300 hover:scale-110 transform hover-lift"
-            >
-              Admin Login
-            </Link>
           </div>
         </div>
       </section>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Play, Pause, Plus, Check, X, RefreshCw, UserPlus, Save } from 'lucide-react';
+import { Play, Pause, Plus, Check, X, RefreshCw, UserPlus, Save, Lock } from 'lucide-react';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 import { auctionAPI, calculateNextBid, getPlayerImageUrl, type Team, type Player, type AuctionState } from '@/lib/api';
@@ -19,7 +19,13 @@ const TEAM_COLORS: Record<string, string> = {
   'SNAKE BABU SUPER STRIKERS': '#a85c52',
 };
 
+// Admin password - simple protection
+const ADMIN_PASSWORD = 'ppl2025';
+
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [state, setState] = useState<AuctionState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
@@ -39,9 +45,19 @@ export default function AdminPage() {
   // Use Socket.io for real-time updates
   const { auctionState, isConnected } = useSocket();
 
-  // Update state from Socket.io or fallback to initial fetch
+  // Check authentication on mount
   useEffect(() => {
-    if (auctionState) {
+    const authStatus = localStorage.getItem('admin_authenticated');
+    if (authStatus === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  // Update state from Socket.io or fallback to initial fetch (only if authenticated)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    if (auctionState && auctionState.state) {
       setState(auctionState.state);
       setTeams(auctionState.teams);
       if (auctionState.state.currentPlayer) {
@@ -59,7 +75,20 @@ export default function AdminPage() {
       // Initial fetch if Socket.io hasn't connected yet
       fetchState();
     }
-  }, [auctionState]);
+  }, [auctionState, isAuthenticated]);
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      localStorage.setItem('admin_authenticated', 'true');
+      setPasswordError('');
+      setPassword('');
+    } else {
+      setPasswordError('Incorrect password. Please try again.');
+      setPassword('');
+    }
+  };
 
   const fetchState = async () => {
     try {
@@ -318,6 +347,59 @@ export default function AdminPage() {
 
     return { canBid: true };
   };
+
+  // Password protection - show login form if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden">
+        {/* Background effects */}
+        <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+          <div className="absolute inset-0" style={{
+            background: 'radial-gradient(circle at 30% 40%, rgba(92, 46, 42, 0.25) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(139, 70, 64, 0.2) 0%, transparent 50%)',
+            animation: 'pulse-glow 4s ease-in-out infinite',
+          }} />
+        </div>
+        
+        <div className="w-full max-w-md px-4">
+          <div className="bg-card border-2 border-border rounded-lg shadow-xl p-8">
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                <Lock className="h-8 w-8 text-primary" />
+              </div>
+              <h1 className="text-2xl font-bold text-foreground mb-2">Admin Access</h1>
+              <p className="text-sm text-muted-foreground">Enter password to access admin panel</p>
+            </div>
+            
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordError('');
+                  }}
+                  placeholder="Enter password"
+                  className="w-full px-4 py-3 rounded-lg border-2 border-border bg-background text-foreground focus:border-primary focus:outline-none transition-colors"
+                  autoFocus
+                />
+                {passwordError && (
+                  <p className="mt-2 text-sm text-destructive">{passwordError}</p>
+                )}
+              </div>
+              
+              <button
+                type="submit"
+                className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-accent transition-all duration-300 hover:scale-105"
+              >
+                Access Admin Panel
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && !state) {
     return (

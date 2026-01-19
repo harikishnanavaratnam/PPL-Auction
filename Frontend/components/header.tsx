@@ -54,7 +54,7 @@ export function Header() {
                   priority
                 />
               </div>
-              <div className="text-xs sm:text-sm text-[#f5deb3]/90 mt-1 font-medium">Cricket Auction 2025</div>
+              <div className="text-xs sm:text-sm text-[#f5deb3]/90 mt-1 font-medium">Cricket Auction 2026</div>
             </div>
           </div>
 
@@ -74,12 +74,6 @@ export function Header() {
                 <span className="absolute inset-0 bg-[#f5deb3]/10 rounded -z-0 opacity-0 group-hover:opacity-100 transition-opacity" />
               </Link>
             </nav>
-            <Link
-              href="/admin"
-              className="px-4 py-2 bg-[#f5deb3] text-[#5c2e2a] text-sm font-medium hover:bg-[#f5deb3]/90 hover:text-[#8b4640] transition-all duration-300 rounded-lg hover:scale-105 hover:shadow-lg hover-lift"
-            >
-              Admin
-            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -119,13 +113,6 @@ export function Header() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Live Auction
-            </Link>
-            <Link
-              href="/admin"
-              className="block px-4 py-2 bg-[#f5deb3] text-[#5c2e2a] font-medium hover:bg-[#f5deb3]/90 transition-colors rounded"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Admin Panel
             </Link>
           </nav>
         )}

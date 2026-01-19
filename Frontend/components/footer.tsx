@@ -34,17 +34,13 @@ export function Footer() {
                 <span className="relative z-10">Live</span>
                 <span className="absolute inset-0 bg-[#f5deb3]/10 rounded -z-0 opacity-0 group-hover:opacity-100 transition-opacity" />
               </Link>
-              <Link href="/admin" className="text-[#f5deb3] hover:text-white transition-colors duration-300 hover:scale-105 transform relative group">
-                <span className="relative z-10">Admin</span>
-                <span className="absolute inset-0 bg-[#f5deb3]/10 rounded -z-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </Link>
             </nav>
           </div>
 
           <div className="border-t border-[#f5deb3]/20 pt-8">
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
               <p className="text-sm text-[#f5deb3]/80">
-                © 2025 Pongal Premiere League. All rights reserved.
+                © 2026 Pongal Premiere League. All rights reserved.
               </p>
               
               <div className="flex items-center gap-2 text-sm font-medium text-[#f5deb3]/80">
