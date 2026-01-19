@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Play, Pause, Plus, Check, X, RefreshCw, UserPlus, Save, Lock } from 'lucide-react';
+import { Play, Pause, Plus, Check, X, RefreshCw, UserPlus, Save, Lock, Download } from 'lucide-react';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 import { auctionAPI, calculateNextBid, getPlayerImageUrl, type Team, type Player, type AuctionState } from '@/lib/api';
@@ -284,6 +284,45 @@ export default function AdminPage() {
     }
   };
 
+  const handleDownloadHistory = () => {
+    if (!state || !state.history || state.history.length === 0) {
+      alert('No history available to download');
+      return;
+    }
+
+    // Prepare CSV data: Player Number, Team, Bid Price
+    const rows = [
+      ['Player Number', 'Team', 'Bid Price'], // Header
+    ];
+
+    // Add history entries
+    state.history.forEach((entry, index) => {
+      const player = entry.player as Player;
+      const team = entry.team as Team;
+      const playerNumber = index + 1; // Sequential number starting from 1
+      const teamName = team?.name || 'Unknown Team';
+      const bidPrice = entry.soldPrice || 0;
+
+      rows.push([
+        playerNumber.toString(),
+        teamName,
+        bidPrice.toString(),
+      ]);
+    });
+
+    // Create CSV content
+    const csvContent = rows.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `auction-history-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Using centralized getPlayerImageUrl from @/lib/api
 
   const getTeamColor = (teamName: string): string => {
@@ -514,6 +553,14 @@ export default function AdminPage() {
                   </button>
                 </>
               )}
+              <button
+                onClick={handleDownloadHistory}
+                className="flex items-center gap-2 px-4 py-2 bg-secondary text-foreground rounded-lg font-medium hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+                title="Download full auction history as CSV"
+              >
+                <Download className="h-4 w-4" />
+                Download History
+              </button>
               <button
                 onClick={async () => {
                   try {

@@ -141,8 +141,8 @@ export const auctionAPI = {
       teams: Team[];
     }>('/auction/stop-auction', { method: 'POST' }),
 
-  // Get round summary
-  getRoundSummary: (): Promise<{
+  // Get round summary (optionally filter by round number)
+  getRoundSummary: (round?: number): Promise<{
     round: number;
     totalSold: number;
     totalValue: number;
@@ -151,10 +151,14 @@ export const auctionAPI = {
       player: Player;
       soldPrice: number;
       team: Team;
+      round?: number;
       timestamp?: Date;
     }>;
     teams: Team[];
-  }> => apiRequest('/auction/round-summary'),
+  }> => {
+    const url = round ? `/auction/round-summary?round=${round}` : '/auction/round-summary';
+    return apiRequest(url);
+  },
 
   // Set team captain and fixed players
   setTeamFixed: (teamId: string, captainId: string | null, fixedPlayerIds: string[]): Promise<{ message: string; team: string }> =>

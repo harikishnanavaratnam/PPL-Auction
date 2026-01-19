@@ -443,11 +443,13 @@ router.post('/sell', async (req, res) => {
         
         await team.save();
 
-        // Update History
+        // Update History (preserve from start, include round info)
         state.history.push({
             player: player._id,
             soldPrice: state.currentBid,
-            team: team._id
+            team: team._id,
+            round: state.currentRound,
+            timestamp: new Date()
         });
 
         // Reset State for next
@@ -640,20 +642,24 @@ router.post('/stop-auction', async (req, res) => {
 // Get Round Summary
 router.get('/round-summary', async (req, res) => {
     try {
-        const state = await AuctionState.findOne({ constantId: 'GLOBAL_STATE' }).populate('history.player');
+        const { round } = req.query; // Optional: filter by specific round
+        const state = await AuctionState.findOne({ constantId: 'GLOBAL_STATE' })
+            .populate('history.player')
+            .populate('history.team');
         const teams = await Team.find({}).populate('roster');
         
-        // Calculate round statistics
-        const roundHistory = state.history.filter(h => {
-            // For now, all history is shown. In future, filter by round if needed
-            return true;
-        });
+        // Calculate round statistics - filter by round if specified, otherwise show all
+        let roundHistory = state.history || [];
+        if (round) {
+            const roundNum = parseInt(round);
+            roundHistory = (state.history || []).filter(h => h.round === roundNum);
+        }
 
         res.json({
-            round: state.currentRound,
-            totalSold: state.history.length,
-            totalValue: state.history.reduce((sum, h) => sum + (h.soldPrice || 0), 0),
-            highestBid: Math.max(...state.history.map(h => h.soldPrice || 0), 0),
+            round: round ? parseInt(round) : state.currentRound,
+            totalSold: roundHistory.length,
+            totalValue: roundHistory.reduce((sum, h) => sum + (h.soldPrice || 0), 0),
+            highestBid: roundHistory.length > 0 ? Math.max(...roundHistory.map(h => h.soldPrice || 0), 0) : 0,
             history: roundHistory,
             teams
         });

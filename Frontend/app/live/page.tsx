@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Volume2, Users, RefreshCw } from 'lucide-react';
+import { Volume2, Users, RefreshCw, Download, X } from 'lucide-react';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 import { auctionAPI, getPlayerImageUrl, type Team, type Player, type AuctionState } from '@/lib/api';
@@ -25,13 +25,37 @@ export default function LiveAuctionPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showRoundSummary, setShowRoundSummary] = useState(false);
+  const [roundSummary, setRoundSummary] = useState<any>(null);
+  const [previousRound, setPreviousRound] = useState<number>(1);
 
   // Use Socket.io for real-time updates
   const { auctionState, isConnected } = useSocket();
 
   // Update state from Socket.io or fallback to initial fetch
   useEffect(() => {
-    if (auctionState) {
+    if (auctionState && auctionState.state) {
+      const newRound = auctionState.state.currentRound || 1;
+      
+      // Check if round changed (and we're not on initial load)
+      if (previousRound > 0 && previousRound !== newRound && newRound > previousRound) {
+        // Round changed - fetch and show summary for the previous round
+        const fetchSummary = async () => {
+          try {
+            const summary = await auctionAPI.getRoundSummary(previousRound);
+            setRoundSummary(summary);
+            setShowRoundSummary(true);
+          } catch (err) {
+            console.error('Failed to fetch round summary:', err);
+          }
+        };
+        fetchSummary();
+      }
+      
+      if (previousRound === 0 || previousRound !== newRound) {
+        setPreviousRound(newRound);
+      }
+      
       setState(auctionState.state);
       setTeams(auctionState.teams);
       setLoading(false);
@@ -40,11 +64,13 @@ export default function LiveAuctionPage() {
       // Initial fetch if Socket.io hasn't connected yet
       fetchState();
     }
-  }, [auctionState]);
+  }, [auctionState, previousRound]);
 
   const fetchState = async () => {
     try {
       const response = await auctionAPI.getState();
+      const initialRound = response.state?.currentRound || 1;
+      setPreviousRound(initialRound);
       setState(response.state);
       setTeams(response.teams);
       setLoading(false);
@@ -318,6 +344,217 @@ export default function LiveAuctionPage() {
           </div>
         </div>
       </main>
+
+      {/* Round Summary Modal */}
+      {showRoundSummary && roundSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border-2 border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-card border-b border-border p-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-foreground">
+                Round {roundSummary.round - 1} Summary
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => downloadRoundSummary(roundSummary)}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-accent transition-colors flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRoundSummary(false);
+                    setRoundSummary(null);
+                  }}
+                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Total Sold</p>
+                  <p className="text-2xl font-bold text-primary">{roundSummary.totalSold}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Total Value</p>
+                  <p className="text-2xl font-bold text-accent">{roundSummary.totalValue}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Highest Bid</p>
+                  <p className="text-2xl font-bold text-foreground">{roundSummary.highestBid || 0}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Round</p>
+                  <p className="text-2xl font-bold text-foreground">{roundSummary.round - 1}</p>
+                </div>
+              </div>
+
+              {/* Sales History */}
+              {roundSummary.history && roundSummary.history.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-foreground mb-4">Sales History</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {roundSummary.history.slice().reverse().map((sale: any, index: number) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-card border border-border overflow-hidden">
+                            <Image
+                              src={getTeamLogo((sale.team as Team)?.name || '')}
+                              alt={(sale.team as Team)?.name || 'Team'}
+                              width={32}
+                              height={32}
+                              className="object-contain p-1"
+                            />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-foreground text-sm">
+                              {(sale.team as Team)?.name || 'Unknown Team'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {(sale.player as Player)?.name || 'Unknown Player'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-bold text-primary">{sale.soldPrice || 0} UNITS</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Round Summary Modal */}
+      {showRoundSummary && roundSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border-2 border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-card border-b border-border p-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-foreground">
+                Round {roundSummary.round} Summary
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const rows = [
+                      ['Round Summary'],
+                      ['Round', roundSummary.round],
+                      ['Total Sold', roundSummary.totalSold],
+                      ['Total Value', roundSummary.totalValue],
+                      ['Highest Bid', roundSummary.highestBid || 0],
+                      [],
+                      ['Sales History'],
+                      ['Team', 'Player', 'Price', 'Timestamp'],
+                    ];
+
+                    if (roundSummary.history && roundSummary.history.length > 0) {
+                      roundSummary.history.slice().reverse().forEach((sale: any) => {
+                        rows.push([
+                          (sale.team as Team)?.name || 'Unknown Team',
+                          (sale.player as Player)?.name || 'Unknown Player',
+                          (sale.soldPrice || 0).toString(),
+                          sale.timestamp ? new Date(sale.timestamp).toLocaleString() : '',
+                        ]);
+                      });
+                    }
+
+                    const csvContent = rows.map(row => row.join(',')).join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', `round-${roundSummary.round}-summary.csv`);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-accent transition-colors flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRoundSummary(false);
+                    setRoundSummary(null);
+                  }}
+                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Total Sold</p>
+                  <p className="text-2xl font-bold text-primary">{roundSummary.totalSold}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Total Value</p>
+                  <p className="text-2xl font-bold text-accent">{roundSummary.totalValue}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Highest Bid</p>
+                  <p className="text-2xl font-bold text-foreground">{roundSummary.highestBid || 0}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-secondary/5 border border-border">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Round</p>
+                  <p className="text-2xl font-bold text-foreground">{roundSummary.round}</p>
+                </div>
+              </div>
+
+              {/* Sales History */}
+              {roundSummary.history && roundSummary.history.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-foreground mb-4">Sales History</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {roundSummary.history.slice().reverse().map((sale: any, index: number) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-card border border-border overflow-hidden">
+                            <Image
+                              src={getTeamLogo((sale.team as Team)?.name || '')}
+                              alt={(sale.team as Team)?.name || 'Team'}
+                              width={32}
+                              height={32}
+                              className="object-contain p-1"
+                            />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-foreground text-sm">
+                              {(sale.team as Team)?.name || 'Unknown Team'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {(sale.player as Player)?.name || 'Unknown Player'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-bold text-primary">{sale.soldPrice || 0} UNITS</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer hidden on live page to save space */}
     </div>

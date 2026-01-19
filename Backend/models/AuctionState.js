@@ -12,6 +12,7 @@ const auctionStateSchema = new mongoose.Schema({
         player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
         soldPrice: Number,
         team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+        round: { type: Number },
         timestamp: { type: Date, default: Date.now }
     }]
 });
