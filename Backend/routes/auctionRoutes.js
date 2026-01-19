@@ -302,12 +302,35 @@ router.post('/next-player', async (req, res) => {
     try {
         const state = await AuctionState.findOne({ constantId: 'GLOBAL_STATE' });
 
-        // Find random unsold player
-        const count = await Player.countDocuments({ status: 'Unsold' });
-        if (count === 0) return res.status(400).json({ message: 'No unsold players left' });
+        // Get all teams to find captain and fixed players
+        const teams = await Team.find({});
+        const excludedPlayerIds = [];
+        
+        // Collect all captain and fixed player IDs
+        teams.forEach(team => {
+            if (team.captain) {
+                excludedPlayerIds.push(team.captain);
+            }
+            if (Array.isArray(team.fixedPlayers) && team.fixedPlayers.length > 0) {
+                excludedPlayerIds.push(...team.fixedPlayers);
+            }
+        });
+
+        // Find random unsold player, excluding fixed/captain players
+        const query = { status: 'Unsold' };
+        if (excludedPlayerIds.length > 0) {
+            query._id = { $nin: excludedPlayerIds };
+        }
+        
+        const count = await Player.countDocuments(query);
+        if (count === 0) return res.status(400).json({ message: 'No unsold players left (excluding fixed/captain players)' });
 
         const random = Math.floor(Math.random() * count);
-        const player = await Player.findOne({ status: 'Unsold' }).skip(random);
+        const player = await Player.findOne(query).skip(random);
+
+        if (!player) {
+            return res.status(404).json({ message: 'No eligible player found' });
+        }
 
         state.currentPlayer = player._id;
         state.currentBid = player.basePrice;
