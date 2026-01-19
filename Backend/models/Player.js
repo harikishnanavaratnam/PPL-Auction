@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const playerSchema = new mongoose.Schema({
     name: { type: String, required: true },
     category: { type: String, default: 'General' }, // e.g., Batsman, Bowler, All-Rounder
-    basePrice: { type: Number, default: 50 },
+    basePrice: { type: Number, default: 100 },
     soldPrice: { type: Number, default: 0 },
     status: {
         type: String,

@@ -14,19 +14,22 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
+        url: '/Icons/PPL.png',
+        type: 'image/png',
       },
       {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
+        url: '/Icons/PPL.png',
+        sizes: '32x32',
+        type: 'image/png',
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/Icons/PPL.png',
+        sizes: '16x16',
+        type: 'image/png',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/Icons/PPL.png',
+    shortcut: '/Icons/PPL.png',
   },
 }
 

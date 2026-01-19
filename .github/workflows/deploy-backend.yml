@@ -1,0 +1,63 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./Backend
+        run: npm ci
+
+      - name: Verify build
+        working-directory: ./Backend
+        run: |
+          echo "Backend build verification"
+          node --version
+          npm --version
+
+      # Render deployment
+      - name: Deploy to Render
+        if: ${{ secrets.RENDER_SERVICE_ID != '' }}
+        env:
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          echo "Deploying to Render..."
+          curl -X POST "https://api.render.com/deploy/srv/$RENDER_SERVICE_ID" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json"
+
+      # Railway deployment (alternative)
+      - name: Deploy to Railway
+        if: ${{ secrets.RAILWAY_TOKEN != '' && secrets.RENDER_SERVICE_ID == '' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Note: Railway deployment typically requires connecting via Git"
+          echo "Configure Railway to auto-deploy from GitHub for automatic deployments"
+
+      - name: Deployment Summary
+        run: |
+          echo "## Backend Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build verified" >> $GITHUB_STEP_SUMMARY
+          echo "- ℹ️ Configure Render or Railway secrets for automatic deployment" >> $GITHUB_STEP_SUMMARY

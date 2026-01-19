@@ -2,215 +2,324 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Volume2, Users, ChevronLeft } from 'lucide-react';
+import Image from 'next/image';
+import { Volume2, Users, RefreshCw } from 'lucide-react';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
+import { auctionAPI, getPlayerImageUrl, type Team, type Player, type AuctionState } from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
+import { getTeamLogo } from '@/lib/teamUtils';
 
-interface Team {
-  id: string;
-  name: string;
-  color: string;
-}
-
-interface Player {
-  id: string;
-  name: string;
-  image: string;
-}
-
-interface Bid {
-  teamId: string;
-  teamName: string;
-  amount: number;
-  timestamp: Date;
-}
+// Team colors matching SRS
+const TEAM_COLORS: Record<string, string> = {
+  'ASSAULT ARUMUGAM AVENGERS': '#5c2e2a',
+  'CHILD CHINNA CHAMPIONS': '#8b4640',
+  'ERIMALAI WARRIORS': '#a85c52',
+  'KAIPULLA KINGS': '#5c2e2a',
+  'NESAMANI XI': '#8b4640',
+  'SNAKE BABU SUPER STRIKERS': '#a85c52',
+};
 
 export default function LiveAuctionPage() {
-  const [currentPlayer, setCurrentPlayer] = useState<Player>({
-    id: '1',
-    name: 'Virat Kohli',
-    image: 'https://via.placeholder.com/300x400?text=Player',
-  });
+  const [state, setState] = useState<AuctionState | null>(null);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [currentTeam, setCurrentTeam] = useState<Team>({
-    id: 'csk',
-    name: 'Chennai Super Kings',
-    color: '#FFD700',
-  });
+  // Use Socket.io for real-time updates
+  const { auctionState, isConnected } = useSocket();
 
-  const [currentBid, setCurrentBid] = useState(50000);
-  const [biddingHistory, setBiddingHistory] = useState<Bid[]>([
-    {
-      teamId: 'csk',
-      teamName: 'Chennai Super Kings',
-      amount: 50000,
-      timestamp: new Date(),
-    },
-    {
-      teamId: 'mi',
-      teamName: 'Mumbai Indians',
-      amount: 45000,
-      timestamp: new Date(Date.now() - 10000),
-    },
-    {
-      teamId: 'kkr',
-      teamName: 'Kolkata Knight Riders',
-      amount: 40000,
-      timestamp: new Date(Date.now() - 20000),
-    },
-  ]);
-
-  const [isBiddingLive, setIsBiddingLive] = useState(true);
-
-  const teams: Team[] = [
-    { id: 'csk', name: 'Chennai Super Kings', color: '#FFD700' },
-    { id: 'mi', name: 'Mumbai Indians', color: '#003DA5' },
-    { id: 'kkr', name: 'Kolkata Knight Riders', color: '#3A1365' },
-    { id: 'rcb', name: 'Royal Challengers Bangalore', color: '#EC1C24' },
-    { id: 'dc', name: 'Delhi Capitals', color: '#00245E' },
-    { id: 'rr', name: 'Rajasthan Royals', color: '#E74C3C' },
-  ];
-
+  // Update state from Socket.io or fallback to initial fetch
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (isBiddingLive) {
-        const newBid = currentBid + Math.floor(Math.random() * 10000) + 5000;
-        const randomTeam = teams[Math.floor(Math.random() * teams.length)];
-        setCurrentBid(newBid);
-        setCurrentTeam(randomTeam);
-        setBiddingHistory((prev) => [
-          {
-            teamId: randomTeam.id,
-            teamName: randomTeam.name,
-            amount: newBid,
-            timestamp: new Date(),
-          },
-          ...prev.slice(0, 9),
-        ]);
-      }
-    }, 4000);
+    if (auctionState) {
+      setState(auctionState.state);
+      setTeams(auctionState.teams);
+      setLoading(false);
+      setError(null);
+    } else {
+      // Initial fetch if Socket.io hasn't connected yet
+      fetchState();
+    }
+  }, [auctionState]);
 
-    return () => clearInterval(timer);
-  }, [isBiddingLive, currentBid, teams]);
+  const fetchState = async () => {
+    try {
+      const response = await auctionAPI.getState();
+      setState(response.state);
+      setTeams(response.teams);
+      setLoading(false);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch auction state');
+      setLoading(false);
+    }
+  };
+
+  // Using centralized getPlayerImageUrl from @/lib/api
+
+  const getTeamColor = (teamName: string): string => {
+    return TEAM_COLORS[teamName.toUpperCase()] || '#5c2e2a';
+  };
+
+  if (loading && !state) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading auction state...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !state) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive mb-4">{error}</p>
+          <button
+            onClick={fetchState}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-accent"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentPlayer = state?.currentPlayer as Player | null;
+  const currentBid = state?.currentBid || (currentPlayer?.basePrice || 0);
+  const currentBidderTeam = state?.currentBidder as Team | null;
+  const isBiddingLive = state?.isAuctionActive || false;
+
+  // Get recent history (last 10 bids from current player bidding)
+  const recentBids = state?.history
+    ?.slice()
+    .reverse()
+    .slice(0, 10)
+    .map((h) => ({
+      player: h.player as Player,
+      team: h.team as Team,
+      amount: h.soldPrice,
+      timestamp: h.timestamp || new Date(),
+    })) || [];
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col relative overflow-hidden">
+      {/* Enhanced Animated Background - Multiple Layers */}
+      <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+        {/* Pulsing radial pattern background */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(circle at 30% 40%, rgba(92, 46, 42, 0.25) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(139, 70, 64, 0.2) 0%, transparent 50%)',
+          animation: 'pulse-glow 4s ease-in-out infinite',
+        }} />
+        
+        {/* Shimmer sweep - visible horizontal sweep */}
+        <div className="absolute inset-0">
+          <div className="absolute top-0 left-0 w-full h-full animate-shimmer-sweep" style={{
+            background: 'linear-gradient(90deg, transparent 0%, rgba(245, 222, 179, 0.4) 45%, rgba(92, 46, 42, 0.3) 50%, rgba(245, 222, 179, 0.4) 55%, transparent 100%)',
+            width: '40%',
+            height: '100%',
+          }} />
+        </div>
+        
+        {/* Floating orbs - larger and more visible */}
+        <div className="absolute inset-0">
+          <div className="absolute top-32 left-32 w-[500px] h-[500px] bg-primary/25 rounded-full blur-3xl animate-wave" style={{ animationDelay: '0s' }} />
+          <div className="absolute bottom-32 right-32 w-[600px] h-[600px] bg-accent/20 rounded-full blur-3xl animate-wave" style={{ animationDelay: '2.5s' }} />
+          <div className="absolute top-1/2 left-1/4 w-[450px] h-[450px] bg-[#f5deb3]/20 rounded-full blur-3xl animate-wave" style={{ animationDelay: '5s' }} />
+        </div>
+      </div>
+      
       <Header />
 
-      {/* Main Content */}
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:py-8 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:gap-8 lg:grid-cols-3">
-          {/* Left: Player Display - Compact */}
-          <div className="lg:col-span-2 animate-slideDown">
-            <div className="rounded-lg bg-card p-6 sm:p-8 shadow-md border border-border">
-              <div className="mb-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Now Auctioning</p>
-                <h2 className="text-2xl sm:text-3xl font-bold text-foreground">{currentPlayer.name}</h2>
-              </div>
+      {/* Main Content - Single container filling top half */}
+      <main className="flex-1 mx-auto w-full max-w-7xl px-3 py-2 sm:px-4 sm:py-3 lg:px-6 lg:py-3 overflow-hidden min-h-0">
+        <div className="rounded-lg bg-card p-3 sm:p-4 shadow-xl border-2 border-border relative overflow-hidden group hover-lift flex-1 flex flex-col min-h-[85vh]">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-              {/* Player Image - Responsive */}
-              <div className="mb-6 flex justify-center">
-                <div className="aspect-[3/4] w-full max-w-xs sm:max-w-sm overflow-hidden rounded-lg border-2 border-border bg-secondary/5">
+          {/* Top: photo left, info (state + bid + bidder + stats) right */}
+          <div className="flex flex-col lg:flex-row gap-4 items-stretch flex-1">
+            {/* Left: Player photo */}
+            <div className="flex justify-center lg:justify-start flex-1 min-h-0">
+              <div className="w-full max-w-[400px] sm:max-w-[500px] lg:max-w-[600px] overflow-hidden rounded-lg border-2 border-primary/30 bg-secondary/5 shadow-xl hover:border-accent transition-all duration-300 hover:scale-105 relative group animate-zoom-in">
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                {currentPlayer && (
                   <img
-                    src={currentPlayer.image || "/placeholder.svg"}
+                    src={getPlayerImageUrl(currentPlayer)}
                     alt={currentPlayer.name}
-                    className="h-full w-full object-cover"
+                    className="w-full h-auto object-contain group-hover:scale-110 transition-transform duration-500"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/placeholder.svg';
+                    }}
                   />
-                </div>
-              </div>
-
-              {/* Current Bid Status - Compact */}
-              <div className="space-y-4 rounded-lg bg-secondary/5 p-4 sm:p-6">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Current Bid</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl sm:text-4xl font-bold text-primary">₹{(currentBid / 100000).toFixed(1)}L</span>
-                  </div>
-                </div>
-
-                {/* Current Bidder */}
-                <div className="border-t border-border pt-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Current Bidder</p>
-                  <div
-                    className="flex items-center gap-3 rounded p-3"
-                    style={{ backgroundColor: `${currentTeam.color}20`, borderLeft: `4px solid ${currentTeam.color}` }}
-                  >
-                    <div className="h-8 w-8 rounded-full flex-shrink-0" style={{ backgroundColor: currentTeam.color }} />
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground text-sm">{currentTeam.name}</p>
-                      <p className="text-xs text-muted-foreground">Bid placed now</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bidding Status */}
-              <div className="mt-4 flex items-center gap-3 rounded-lg bg-accent/10 p-3 border border-accent/20">
-                <div className="h-2 w-2 rounded-full bg-accent animate-pulse-subtle" />
-                <span className="text-sm font-medium text-accent">
-                  {isBiddingLive ? 'Bidding Live' : 'Bidding Closed'}
-                </span>
+                )}
               </div>
             </div>
-          </div>
 
-          {/* Right: Bidding History - Compact */}
-          <div className="animate-slideUp">
-            <div className="rounded-lg bg-card p-6 shadow-md border border-border h-full flex flex-col">
-              <div className="mb-4 flex items-center gap-2">
-                <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                <h3 className="text-base sm:text-lg font-semibold text-foreground">Bid History</h3>
-              </div>
+            {/* Right: state, bid, bidder, stats, status - spread vertically */}
+            <div className="flex-1 flex flex-col gap-4 min-h-0 justify-between">
+              {currentPlayer ? (
+                <>
+                  {/* State / player info */}
+                  <div className="flex-shrink-0">
+                    <p className="text-xs sm:text-sm text-muted-foreground uppercase tracking-wider mb-1 animate-fade-in-up">
+                      Round {state?.currentRound || 1} • Now Auctioning
+                    </p>
+                    <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent animate-bounce-in">
+                      {currentPlayer.name}
+                    </h2>
+                    {currentPlayer.category && (
+                      <p
+                        className="text-xs sm:text-sm text-muted-foreground mt-1 animate-fade-in-up"
+                        style={{ animationDelay: '100ms' }}
+                      >
+                        {currentPlayer.category}
+                      </p>
+                    )}
+                  </div>
 
-              <div className="space-y-2 overflow-y-auto flex-1">
-                {biddingHistory.map((bid, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between rounded border border-border bg-secondary/5 p-2 sm:p-3 transition-all hover:bg-secondary/10 animate-slideUp"
-                    style={{ animationDelay: `${index * 50}ms` }}
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground text-xs sm:text-sm truncate">{bid.teamName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {bid.timestamp.toLocaleTimeString()}
+                  {/* Bid + bidder in first row - BIG */}
+                  <div className="flex flex-col md:flex-row gap-4 flex-shrink-0">
+                    {/* Current Bid - BIG */}
+                    <div className="flex-1 rounded-lg bg-gradient-to-br from-secondary/10 to-secondary/5 px-4 py-4 sm:px-5 sm:py-5 border-2 border-primary/20 relative overflow-hidden animate-scaleIn">
+                      <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 animate-shimmer" />
+                      <div className="relative z-10">
+                        <div className="text-center leading-tight">
+                          <p className="text-sm sm:text-base text-muted-foreground uppercase tracking-wider mb-3">
+                            Current Bid
+                          </p>
+                          <div className="relative inline-block">
+                            <div
+                              className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary rounded-lg blur-md opacity-50 animate-pulse"
+                              style={{ transform: 'scale(1.1)' }}
+                            />
+                            <div className="relative inline-flex bg-gradient-to-br from-primary via-accent to-primary px-5 py-4 sm:px-6 sm:py-5 rounded-lg shadow-2xl border-2 border-white/20 transform hover:scale-105 transition-all duration-300">
+                              <div className="flex flex-col items-center gap-1 leading-none">
+                                <span
+                                  className="text-4xl sm:text-5xl lg:text-6xl font-black text-white drop-shadow-lg animate-bounce-in leading-none"
+                                  style={{
+                                    textShadow: '0 0 15px rgba(255,255,255,0.5), 0 0 30px rgba(92, 46, 42, 0.8)',
+                                    animation: 'glow 2s ease-in-out infinite alternate',
+                                  }}
+                                >
+                                  {currentBid}
+                                </span>
+                                <span className="text-sm sm:text-base font-bold text-white/90 uppercase tracking-widest leading-tight">
+                                  UNITS
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current Bidder - BIG */}
+                    <div className="flex-1 rounded-lg bg-gradient-to-br from-secondary/10 to-secondary/5 px-4 py-4 sm:px-5 sm:py-5 border-2 border-primary/20 relative overflow-hidden animate-scaleIn">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 md:group-hover:opacity-100 animate-shimmer" />
+                      {currentBidderTeam ? (
+                        <div className="relative z-10 flex items-center gap-4">
+                          <div className="h-20 w-20 sm:h-24 sm:w-24 lg:h-28 lg:w-28 rounded-lg bg-card border-2 border-border overflow-hidden flex-shrink-0 shadow-lg">
+                            <Image
+                              src={getTeamLogo(currentBidderTeam.name)}
+                              alt={currentBidderTeam.name}
+                              width={112}
+                              height={112}
+                              className="object-contain p-2.5"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/placeholder.svg';
+                              }}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm sm:text-base text-muted-foreground uppercase tracking-wider mb-2">
+                              Current Bidder
+                            </p>
+                            <p className="font-semibold text-foreground text-base sm:text-lg break-words">
+                              {currentBidderTeam.name}
+                            </p>
+                            <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                              Budget: {currentBidderTeam.budget}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="relative z-10">
+                          <p className="text-sm sm:text-base text-muted-foreground uppercase tracking-wider mb-2">
+                            Current Bidder
+                          </p>
+                          <p className="text-base sm:text-lg text-muted-foreground">No bids yet</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats grid - smaller */}
+                  <div className="grid grid-cols-2 gap-2 flex-1">
+                    <div className="p-3 rounded-lg bg-secondary/5 border border-border flex flex-col justify-center">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground uppercase mb-1">
+                        Round
+                      </p>
+                      <p className="text-lg sm:text-xl font-bold text-primary">
+                        {state?.currentRound || 0}
                       </p>
                     </div>
-                    <p className="font-bold text-primary text-sm ml-2">₹{(bid.amount / 100000).toFixed(1)}L</p>
+                    <div className="p-3 rounded-lg bg-secondary/5 border border-border flex flex-col justify-center">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground uppercase mb-1">
+                        Players Sold
+                      </p>
+                      <p className="text-lg sm:text-xl font-bold text-foreground">
+                        {state?.history?.length || 0}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-secondary/5 border border-border flex flex-col justify-center">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground uppercase mb-1">
+                        Total Spent
+                      </p>
+                      <p className="text-lg sm:text-xl font-bold text-accent">
+                        {teams.reduce((sum, team) => sum + (team.spent || 0), 0)}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-secondary/5 border border-border flex flex-col justify-center">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground uppercase mb-1">
+                        Status
+                      </p>
+                      <p className={`text-lg sm:text-xl font-bold ${isBiddingLive ? 'text-accent' : 'text-muted-foreground'}`}>
+                        {isBiddingLive ? 'LIVE' : 'PAUSED'}
+                      </p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Teams Overview - Compact */}
-        <div className="mt-8 sm:mt-12 animate-fadeIn">
-          <h3 className="mb-4 sm:mb-6 text-lg sm:text-xl font-bold text-foreground flex items-center gap-2">
-            <Users className="h-5 w-5 sm:h-6 sm:w-6" />
-            Active Teams
-          </h3>
-          <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            {teams.map((team) => (
-              <div
-                key={team.id}
-                className="rounded-lg border-2 p-3 sm:p-4 text-center transition-all hover:shadow-md cursor-pointer"
-                style={{
-                  borderColor: team.color,
-                  backgroundColor: `${team.color}05`,
-                }}
-              >
-                <div
-                  className="mx-auto mb-2 h-6 w-6 sm:h-8 sm:w-8 rounded-full"
-                  style={{ backgroundColor: team.color }}
-                />
-                <p className="font-medium text-foreground text-xs sm:text-sm">{team.name}</p>
-              </div>
-            ))}
+                  {/* Status + history link at bottom */}
+                  <div className="flex items-center gap-3 justify-between mt-auto flex-shrink-0 relative z-10">
+                    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 border-2 transition-all duration-300 flex-shrink-0 ${isBiddingLive ? 'bg-accent/10 border-accent/30 animate-glow' : 'bg-muted/10 border-muted/30'}`}>
+                      <div className={`h-3 w-3 rounded-full ${isBiddingLive ? 'bg-accent animate-pulse-subtle shadow-lg shadow-accent/50' : 'bg-muted'}`} />
+                      <span className={`text-sm sm:text-base font-medium ${isBiddingLive ? 'text-accent' : 'text-muted-foreground'}`}>
+                        {isBiddingLive ? 'Bidding Live' : 'Bidding Closed'}
+                      </span>
+                      {isBiddingLive && <span className="text-xs sm:text-sm text-accent/70 animate-pulse-subtle">● LIVE</span>}
+                    </div>
+                    <Link
+                      href="/live/history"
+                      className="text-sm sm:text-base font-medium text-primary hover:text-accent underline-offset-2 hover:underline px-3 py-2 rounded transition-colors cursor-pointer bg-primary/5 hover:bg-primary/10"
+                    >
+                      View full history
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center py-6">
+                  <p className="text-sm sm:text-base text-muted-foreground">No player currently being auctioned</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>
 
-      <Footer />
+      {/* Footer hidden on live page to save space */}
     </div>
   );
 }
