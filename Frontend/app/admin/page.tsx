@@ -284,43 +284,56 @@ export default function AdminPage() {
     }
   };
 
-  const handleDownloadHistory = () => {
+  const handleDownloadHistory = async () => {
     if (!state || !state.history || state.history.length === 0) {
       alert('No history available to download');
       return;
     }
 
-    // Prepare CSV data: Player Number, Team, Bid Price
-    const rows = [
-      ['Player Number', 'Team', 'Bid Price'], // Header
-    ];
+    try {
+      // Fetch fresh state to ensure history is fully populated
+      const freshState = await auctionAPI.getState();
+      const history = freshState.state?.history || state.history;
 
-    // Add history entries
-    state.history.forEach((entry, index) => {
-      const player = entry.player as Player;
-      const team = entry.team as Team;
-      const playerNumber = index + 1; // Sequential number starting from 1
-      const teamName = team?.name || 'Unknown Team';
-      const bidPrice = entry.soldPrice || 0;
+      if (!history || history.length === 0) {
+        alert('No history available to download');
+        return;
+      }
 
-      rows.push([
-        playerNumber.toString(),
-        teamName,
-        bidPrice.toString(),
-      ]);
-    });
+      // Prepare CSV data: Player Number, Team, Bid Price
+      const rows = [
+        ['Player Number', 'Team', 'Bid Price'], // Header
+      ];
 
-    // Create CSV content
-    const csvContent = rows.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `auction-history-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      // Add history entries
+      history.forEach((entry: any, index: number) => {
+        const player = entry.player as Player;
+        const team = entry.team as Team;
+        const playerNumber = index + 1; // Sequential number starting from 1
+        const teamName = (team && typeof team === 'object' && 'name' in team) ? team.name : 'Unknown Team';
+        const bidPrice = entry.soldPrice || 0;
+
+        rows.push([
+          playerNumber.toString(),
+          teamName,
+          bidPrice.toString(),
+        ]);
+      });
+
+      // Create CSV content
+      const csvContent = rows.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `auction-history-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err: any) {
+      alert('Failed to download history: ' + (err.message || 'Unknown error'));
+    }
   };
 
   // Using centralized getPlayerImageUrl from @/lib/api
